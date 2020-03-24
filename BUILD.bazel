@@ -1,0 +1,35 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+load("@bazel_gazelle//:def.bzl", "gazelle")
+
+# gazelle:prefix github.com/prysmaticlabs/prombbolt
+gazelle(name = "gazelle")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "bucketstatscollector.go",
+        "prombolt.go",
+        "statscollector.go",
+    ],
+    importpath = "github.com/prysmaticlabs/prombbolt",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_prometheus_client_golang//prometheus:go_default_library",
+        "@io_etcd_go_bbolt//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "bucketstatscollector_test.go",
+        "prombolt_test.go",
+        "statscollector_test.go",
+    ],
+    embed = [":go_default_library"],
+    deps = [
+        "@com_github_prometheus_client_golang//prometheus:go_default_library",
+        "@com_github_prometheus_client_golang//prometheus/promhttp:go_default_library",
+        "@io_etcd_go_bbolt//:go_default_library",
+    ],
+)

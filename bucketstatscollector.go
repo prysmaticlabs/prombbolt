@@ -1,7 +1,7 @@
 package prombolt
 
 import (
-	"github.com/boltdb/bolt"
+	bolt "go.etcd.io/bbolt"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -177,7 +177,7 @@ func forEachWithBoltDB(db *bolt.DB) func(forEachBucketStatsFunc) error {
 			return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
 				// TODO(mdlayher): if/when possible, iterate child buckets and
 				// collect metrics for them as well.
-				// See: https://github.com/boltdb/bolt/issues/603.
+				// See: https://go.etcd.io/bbolt/issues/603.
 				return iter(string(name), b.Stats())
 			})
 		})

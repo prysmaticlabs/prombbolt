@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/boltdb/bolt"
+	bolt "go.etcd.io/bbolt"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
