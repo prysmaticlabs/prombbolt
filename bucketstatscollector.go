@@ -1,8 +1,8 @@
 package prombolt
 
 import (
-	bolt "go.etcd.io/bbolt"
 	"github.com/prometheus/client_golang/prometheus"
+	bolt "go.etcd.io/bbolt"
 )
 
 var _ prometheus.Collector = &bucketStatsCollector{}
@@ -10,9 +10,10 @@ var _ prometheus.Collector = &bucketStatsCollector{}
 // A bucketStatsCollector is a prometheus.Collector for Bolt database bucket
 // statistics.
 type bucketStatsCollector struct {
-	name    string
-	db      *bolt.DB
-	forEach func(fn forEachBucketStatsFunc) error
+	name           string
+	db             *bolt.DB
+	forEach        func(bn bucketValidityChecker, fn forEachBucketStatsFunc) error
+	blockedBuckets [][]byte
 
 	LogicalBranchPages                *prometheus.Desc
 	PhysicalBranchOverflowPages       *prometheus.Desc
@@ -31,7 +32,7 @@ type bucketStatsCollector struct {
 
 // newBucketStatsCollector creates a new bucketStatsCollector with the specified
 // name and forEachBucketFunc for retrieving statistics.
-func newBucketStatsCollector(name string, db *bolt.DB) *bucketStatsCollector {
+func newBucketStatsCollector(name string, db *bolt.DB, blockedBuckets ...[]byte) *bucketStatsCollector {
 	const (
 		subsystem = "bucket"
 	)
@@ -45,7 +46,8 @@ func newBucketStatsCollector(name string, db *bolt.DB) *bucketStatsCollector {
 		db:   db,
 		// By default, forEach iterates each bucket retrieved from the Bolt
 		// database handle, but this is swappable for tests
-		forEach: forEachWithBoltDB(db),
+		forEach:        forEachWithBoltDB(db),
+		blockedBuckets: blockedBuckets,
 
 		LogicalBranchPages: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "logical_branch_pages"),
@@ -167,14 +169,22 @@ func (c *bucketStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 // buckets in a Bolt database to collect bucket statistics.
 type forEachBucketStatsFunc func(bucket string, s bolt.BucketStats) error
 
+// checks if the current bucket is one that we want to retrieve the relevant
+// statistics for.
+type bucketValidityChecker func(bucket string) bool
+
 // forEachWithBoltDB begins a read-only bolt transaction and returns a forEach
 // function for a bucketStatsCollector.  The returned function is invoked
 // repeatedly for each bucket and its stats retrieved from the Bolt database
 // handle.
-func forEachWithBoltDB(db *bolt.DB) func(forEachBucketStatsFunc) error {
-	return func(iter forEachBucketStatsFunc) error {
+func forEachWithBoltDB(db *bolt.DB) func(bucketValidityChecker, forEachBucketStatsFunc) error {
+	return func(checker bucketValidityChecker, iter forEachBucketStatsFunc) error {
 		return db.View(func(tx *bolt.Tx) error {
 			return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
+				// Exit early if we want to skip the bucket.
+				if !checker(string(name)) {
+					return nil
+				}
 				// TODO(mdlayher): if/when possible, iterate child buckets and
 				// collect metrics for them as well.
 				// See: https://go.etcd.io/bbolt/issues/603.
@@ -186,7 +196,15 @@ func forEachWithBoltDB(db *bolt.DB) func(forEachBucketStatsFunc) error {
 
 // Collect implements the prometheus.Collector interface.
 func (c *bucketStatsCollector) Collect(ch chan<- prometheus.Metric) {
-	err := c.forEach(func(bucket string, s bolt.BucketStats) error {
+	validityChecker := func(bucket string) bool {
+		for _, bkt := range c.blockedBuckets {
+			if string(bkt) == bucket {
+				return false
+			}
+		}
+		return true
+	}
+	err := c.forEach(validityChecker, func(bucket string, s bolt.BucketStats) error {
 		ch <- prometheus.MustNewConstMetric(
 			c.LogicalBranchPages,
 			prometheus.GaugeValue,
