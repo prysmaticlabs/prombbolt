@@ -4,8 +4,8 @@ package prombolt
 import (
 	"sync"
 
-	bolt "go.etcd.io/bbolt"
 	"github.com/prometheus/client_golang/prometheus"
+	bolt "go.etcd.io/bbolt"
 )
 
 const (
@@ -18,10 +18,10 @@ const (
 //
 // Name should specify a unique name for the collector, and will be added
 // as a label to all produced Prometheus metrics.
-func New(name string, db *bolt.DB) prometheus.Collector {
+func New(name string, db *bolt.DB, blockedBuckets ...[]byte) prometheus.Collector {
 	return &collector{
 		stats:       newStatsCollector(name, db),
-		bucketStats: newBucketStatsCollector(name, db),
+		bucketStats: newBucketStatsCollector(name, db, blockedBuckets...),
 	}
 }
 
